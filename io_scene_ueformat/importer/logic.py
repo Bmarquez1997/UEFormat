@@ -616,6 +616,13 @@ class UEFormatImport:
         if not selected_mesh.data.shape_keys:
             # Create Basis shape key
             selected_mesh.shape_key_add(name="Basis", from_mix=False)
+            
+        # Store original shape key values so they aren't included in PoseAsset keys
+        original_values = {}
+        for shape_key in selected_mesh.data.shape_keys.key_blocks:
+            if shape_key.value != 0:
+                original_values[shape_key.name] = shape_key.value
+                shape_key.value = 0
 
         root_bone = selected_armature.pose.bones.get(self.options.root_bone) or selected_armature.pose.bones[0]
 
@@ -734,6 +741,12 @@ class UEFormatImport:
             for key in key_blocks:
                 key.value = 0
             
+       # Reset shape keys back to original values
+        if len(original_values) > 0:
+            for key_block in key_blocks:
+                if orig_value := original_values.get(key_block.name):
+                    key_block.value = orig_value
+                    
         # Final reset before re-entering regular import mode.
         bpy.context.view_layer.objects.active = selected_armature
         bpy.ops.object.mode_set(mode="POSE")

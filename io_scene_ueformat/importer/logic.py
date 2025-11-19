@@ -7,6 +7,7 @@ from typing import cast
 import bpy
 import numpy as np
 from bpy.types import Action, ArmatureModifier, ByteColorAttribute, EditBone, FCurve, Object, PoseBone
+from bpy_extras import anim_utils
 from mathutils import Matrix, Quaternion, Vector
 from math import *
 
@@ -513,7 +514,12 @@ class UEFormatImport:
                 path = bone.path_from_id(name)
                 curves: list[FCurve] = []
                 for i in range(count):
-                    curve = action.fcurves.new(path, index=i)
+                    if bpy.app.version < (5, 0, 0):
+                        curve = action.fcurves.new(path, index=i)
+                    else:
+                        slot = action.slots[0] if len(action.slots) > 0 else action.slots.new(id_type='OBJECT', name=f"Slot_{armature.name}")
+                        channelbag = anim_utils.action_ensure_channelbag_for_slot(action, slot)
+                        curve = channelbag.fcurves.new(path, index=i)
                     curve.keyframe_points.add(key_count)
                     curves.append(curve)
                 return curves

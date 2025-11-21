@@ -154,9 +154,8 @@ class UEFormatImport:
 
             # morph targets
             if self.options.import_morph_targets and lod.morphs:
-                default_key = mesh_object.shape_key_add(from_mix=False)
-                default_key.name = "Default"
-                default_key.interpolation = "KEY_LINEAR"
+                if not mesh_object.data.shape_keys:
+                    mesh_object.shape_key_add(name="Basis", from_mix=False)
 
                 for morph in lod.morphs:
                     key = mesh_object.shape_key_add(from_mix=False)
@@ -165,6 +164,9 @@ class UEFormatImport:
 
                     for delta in morph.deltas:
                         key.data[delta.vertex_index].co += Vector(delta.position)
+                    
+                    # For blender 5.0, keys now get created with a value of 1
+                    key.value = 0
 
             squish = lambda array: array.reshape(
                 array.size,
@@ -710,6 +712,8 @@ class UEFormatImport:
 
             # Use name from pose data
             selected_mesh.data.shape_keys.key_blocks[-1].name = pose.name
+            # For blender 5.0, keys now get created with a value of 1
+            selected_mesh.data.shape_keys.key_blocks[-1].value = 0
 
         bpy.ops.object.mode_set(mode="OBJECT")
         bpy.context.view_layer.objects.active = selected_mesh

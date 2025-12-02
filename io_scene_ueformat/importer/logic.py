@@ -435,6 +435,7 @@ class UEFormatImport:
                 )
                 armature_modifier.show_expanded = False
                 armature_modifier.use_vertex_groups = True
+                armature_modifier.use_deform_preserve_volume = True
                 armature_modifier.object = armature_object
 
                 bpy.ops.object.mode_set(mode="POSE")

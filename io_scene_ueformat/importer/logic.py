@@ -18,6 +18,7 @@ from ..importer.classes import (
     MODEL_IDENTIFIER,
     POSE_IDENTIFIER,
     ANIM_IDENTIFIER,
+    BodySetup,
     Bone,
     ConvexCollision,
     EUEFormatVersion,
@@ -27,10 +28,11 @@ from ..importer.classes import (
     UEAnim,
     UEModel,
     UEModelLOD,
+    UEModelPhysics,
     UEModelSkeleton,
     VertexColor,
     Weight,
-    UEPose
+    UEPose,
 )
 from ..importer.reader import FArchiveReader
 from ..importer.utils import *
@@ -419,8 +421,15 @@ class UEFormatImport:
                         virtual_bone.color.palette = "THEME11"
 
                 bpy.ops.object.mode_set(mode="OBJECT")
+                
+            
+        armature_for_physics: Object | None = None
+        if created_lods:
+            armature_for_physics = created_lods[0].parent
+        elif return_object is not None and return_object.type == "ARMATURE":
+            armature_for_physics = return_object
 
-        # collision
+        # collision (static mesh convex)
         if self.options.import_collision and data.collisions:
             for index, collision in enumerate(data.collisions):
                 collision_name = index if collision.name == "None" else collision.name
@@ -433,7 +442,152 @@ class UEFormatImport:
                 if self.options.link:
                     bpy.context.collection.objects.link(collision_mesh_object)
 
+        # physics (skeletal body setups from PHYSICS chunk)
+        if self.options.import_collision and data.physics_bodies and armature_for_physics is not None:
+            self.import_physics_bodies(armature_for_physics, data.physics_bodies.bodies, name)
+
         return return_object, data
+
+    def import_physics_bodies(self, armature_obj: Object, bodies: list[BodySetup], asset_name: str) -> None:
+        """Create PHY_* empties with Child Of constraints and collision primitives in bone space."""
+        prev_active = bpy.context.view_layer.objects.active
+        prev_sel = {o for o in bpy.context.view_layer.objects if o.select_get()}
+
+        def _unique_object_name(base: str) -> str:
+            out = base
+            n = 1
+            while out in bpy.data.objects:
+                out = f"{base}.{n:03d}"
+                n += 1
+            return out
+
+        def _child_of_follow_bone(phy: Object, bone_name: str) -> None:
+            pb = get_case_insensitive(armature_obj.pose.bones, bone_name)
+            sub = pb.name if pb is not None else bone_name
+            con = phy.constraints.new(type="CHILD_OF")
+            con.name = "Follow Bone"
+            con.target = armature_obj
+            con.subtarget = sub
+            con.inverse_matrix = Matrix()
+
+        try:
+            if bpy.context.object and bpy.context.object.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+
+            for body in bodies:
+                pb = get_case_insensitive(armature_obj.pose.bones, body.bone_name)
+                if pb is None:
+                    Log.warn(f"Physics body references missing bone '{body.bone_name}', skipping")
+                    continue
+
+                phy_name = _unique_object_name(f"PHY_{pb.name}")
+                phy_empty = bpy.data.objects.new(phy_name, None)
+                phy_empty.empty_display_type = "PLAIN_AXES"
+                phy_empty.empty_display_size = max(0.02, 0.15 * self.options.scale_factor)
+                if self.options.link:
+                    bpy.context.collection.objects.link(phy_empty)
+                bpy.context.view_layer.objects.active = phy_empty
+
+                # TODO: Rotate by 90 degrees on the (local) Y axis to match UE default
+                # TODO: Account for reoriented bones (import temp second armature?)
+                # Add in sub-collection?
+                # Parent to armature instead of just constraints?
+                shape_idx = 0
+                for sph in body.sphere_elems:
+                    mesh_name = _unique_object_name(f"UPHY_{pb.name}_sphere_{shape_idx}")
+                    shape_idx += 1
+                    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=1.0)
+                    obj = bpy.context.object
+                    assert obj is not None  # noqa: S101
+                    obj.name = mesh_name
+                    obj.data.name = mesh_name
+                    mat = Matrix.Translation(Vector(sph.center))
+                    s = Matrix.Identity(4)
+                    s[0][0] = s[1][1] = s[2][2] = sph.radius
+                    obj.matrix_local = mat @ s
+                    obj.display_type = "WIRE"
+                    obj.parent = phy_empty
+
+                for box in body.box_elems:
+                    mesh_name = _unique_object_name(f"UPHY_{pb.name}_box_{shape_idx}")
+                    shape_idx += 1
+                    hx, hy, hz = box.x, box.y, box.z
+                    q = make_quat(box.rotation)
+                    bpy.ops.mesh.primitive_cube_add(size=2.0)
+                    obj = bpy.context.object
+                    assert obj is not None  # noqa: S101
+                    obj.name = mesh_name
+                    obj.data.name = mesh_name
+                    smat = Matrix.Identity(4)
+                    smat[0][0], smat[1][1], smat[2][2] = hx, hy, hz
+                    obj.matrix_local = (
+                        Matrix.Translation(Vector(box.center)) @ q.to_matrix().to_4x4() @ smat
+                    )
+                    obj.display_type = "WIRE"
+                    obj.parent = phy_empty
+
+                for sphyl in body.capsule_elems:
+                    mesh_name = _unique_object_name(f"UPHY_{pb.name}_sphyl_{shape_idx}")
+                    shape_idx += 1
+                    q = make_quat(sphyl.rotation)
+                    depth = sphyl.length + 2.0 * sphyl.radius
+                    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1.0, depth=2.0)
+                    obj = bpy.context.object
+                    assert obj is not None  # noqa: S101
+                    obj.name = mesh_name
+                    obj.data.name = mesh_name
+                    align_x = Matrix.Rotation(pi / 2.0, 4, "Y")
+                    sz = Matrix.Identity(4)
+                    sz[0][0] = sz[1][1] = sphyl.radius
+                    sz[2][2] = depth / 2.0
+                    obj.matrix_local = (
+                        Matrix.Translation(Vector(sphyl.center))
+                        @ q.to_matrix().to_4x4()
+                        @ align_x
+                        @ sz
+                    )
+                    obj.display_type = "WIRE"
+                    obj.parent = phy_empty
+
+                for tap in body.tapered_capsule_elems:
+                    mesh_name = _unique_object_name(f"UPHY_{pb.name}_tcap_{shape_idx}")
+                    shape_idx += 1
+                    q = make_quat(tap.rotation)
+                    depth = max(tap.length, 1e-6)
+                    bpy.ops.mesh.primitive_cone_add(
+                        vertices=24,
+                        radius1=max(tap.radius0, 1e-6),
+                        radius2=max(tap.radius1, 1e-6),
+                        depth=depth,
+                    )
+                    obj = bpy.context.object
+                    assert obj is not None  # noqa: S101
+                    obj.name = mesh_name
+                    obj.data.name = mesh_name
+                    align_x = Matrix.Rotation(pi / 2.0, 4, "Y")
+                    obj.matrix_local = (
+                        Matrix.Translation(Vector(tap.center)) @ q.to_matrix().to_4x4() @ align_x
+                    )
+                    obj.display_type = "WIRE"
+                    obj.parent = phy_empty
+
+                for cx in body.convex_elems:
+                    mesh_name = _unique_object_name(f"UPHY_{pb.name}_convex_{shape_idx}")
+                    shape_idx += 1
+                    mesh_data = bpy.data.meshes.new(mesh_name)
+                    mesh_data.from_pydata(cx.vertices, [], cx.indices)  # type: ignore[reportArgumentType]
+                    obj = bpy.data.objects.new(mesh_name, mesh_data)
+                    obj.display_type = "WIRE"
+                    obj.parent = phy_empty
+                    if self.options.link:
+                        bpy.context.collection.objects.link(obj)
+
+                _child_of_follow_bone(phy_empty, pb.name)
+        finally:
+            bpy.context.view_layer.objects.active = prev_active
+            bpy.ops.object.select_all(action="DESELECT")
+            for o in prev_sel:
+                o.select_set(True)
 
     def import_ueanim_data(self, ar: FArchiveReader, name: str) -> tuple[bpy.types.Action, UEAnim]:
         assert isinstance(self.options, UEAnimOptions)  # noqa: S101

@@ -31,6 +31,7 @@ class EUEFormatVersion(IntEnum):
     SerializeAssetMetadata = 7
     PreserveOriginalTransforms = 8
     AddPoseExport = 9
+    SerializePhysicsAssets = 10
 
     VersionPlusOne = auto()
     LatestVersion = VersionPlusOne - 1
@@ -41,13 +42,10 @@ class UEModel:
     lods: list[UEModelLOD] = field(default_factory=list)
     collisions: list[ConvexCollision] = field(default_factory=list)
     skeleton: UEModelSkeleton | None = None
-    # physics = None  # noqa: ERA001
+    physics_bodies: UEModelPhysics | None = None
 
     @classmethod
-    def from_archive(
-        cls,
-        ar: FArchiveReader
-    ) -> UEModel:
+    def from_archive(cls, ar: FArchiveReader) -> UEModel:
         data = cls()
 
         while not ar.eof():
@@ -65,6 +63,8 @@ class UEModel:
                         array_size,
                         lambda ar: ConvexCollision.from_archive(ar),
                     )
+                case "PHYSICS":
+                    data.physics_bodies = UEModelPhysics.from_archive(ar.chunk(byte_size))
                 case _:
                     Log.warn(f"Unknown Mesh Data: {section_name}")
                     ar.skip(byte_size)
@@ -681,12 +681,14 @@ class UEPoseCurveInfluence:
             influence=ar.read_float()
         )
 
-"""
+@dataclass(slots=True)
 class UEModelPhysics:
-    bodies = []
+    bodies: list[BodySetup] = field(default_factory=list)
 
-    def __init__(self, ar: FArchiveReader, scale):
-
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> UEModelPhysics:
+        data = cls()
+        
         while not ar.eof():
             header_name = ar.read_fstring()
             array_size = ar.read_int()
@@ -694,91 +696,116 @@ class UEModelPhysics:
 
             pos = ar.data.tell()
             if header_name == "BODIES":
-                self.bodies = ar.read_array(array_size, lambda ar: BodySetup(ar, scale))
+                data.bodies = ar.read_array(array_size, BodySetup.from_archive)
             else:
-                Log.warn(f"Unknown Skeleton Data: {header_name}")
+                Log.warn(f"Unknown Physics Data: {header_name}")
                 ar.skip(byte_size)
             ar.data.seek(pos + byte_size, 0)
+
+        return data
+
 
 class EPhysicsType(IntEnum):
     PhysType_Default = 0
     PhysType_Kinematic = 1
     PhysType_Simulated = 2
 
-
+@dataclass(slots=True)
 class BodySetup:
-    bone_name = ""
-    physics_type = EPhysicsType.PhysType_Default
+    bone_name: str
+    physics_type: EPhysicsType = EPhysicsType.PhysType_Default
+    
+    sphere_elems: list[SphereCollision] = field(default_factory=list)
+    box_elems: list[BoxCollision] = field(default_factory=list)
+    capsule_elems: list[CapsuleCollision] = field(default_factory=list)
+    tapered_capsule_elems: list[TaperedCapsuleCollision] = field(default_factory=list)
+    convex_elems: list[ConvexCollision] = field(default_factory=list)
 
-    sphere_elems = []
-    box_elems = []
-    capsule_elems = []
-    tapered_capsule_elems = []
-    convex_elems = []
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> BodySetup:
+        return cls(
+            bone_name=ar.read_fstring(),
+            physics_type=EPhysicsType(ord(ar.read_byte())),
+            
+            sphere_elems=ar.read_serialized_array(SphereCollision.from_archive),
+            box_elems=ar.read_serialized_array(BoxCollision.from_archive),
+            capsule_elems=ar.read_serialized_array(CapsuleCollision.from_archive),
+            tapered_capsule_elems=ar.read_serialized_array(TaperedCapsuleCollision.from_archive),
+            convex_elems=ar.read_serialized_array(ConvexCollision.from_archive),
+        )
 
-    def __init__(self, ar: FArchiveReader, scale):
-        self.bone_name = ar.read_fstring()
-        self.physics_type = EPhysicsType(int.from_bytes(ar.read_byte(), byteorder="big"))
+@dataclass(slots=True)
+class CollisionShape:
+    name: str
+    center: list[float]
 
-        self.sphere_elems = ar.read_bulk_array(lambda ar: SphereCollision(ar, scale))
-        self.box_elems = ar.read_bulk_array(lambda ar: BoxCollision(ar, scale))
-        self.capsule_elems = ar.read_bulk_array(lambda ar: CapsuleCollision(ar, scale))
-        self.tapered_capsule_elems = ar.read_bulk_array(lambda ar: TaperedCapsuleCollision(ar, scale))
-        self.convex_elems = ar.read_bulk_array(lambda ar: ConvexCollision(ar, scale))
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> CollisionShape:
+        return cls(
+            name = ar.read_fstring(),
+            center = ar.read_float_vector(3)  * ar.metadata["scale"] * ((1, -1, 1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1)),
+        )
 
-class SphereCollision:
-    name = ""
-    center = []
-    radius = 0
+@dataclass(slots=True)
+class SphereCollision(CollisionShape):
+    radius: float
 
-    def __init__(self, ar: FArchiveReader, scale):
-        self.name = ar.read_fstring()
-        self.center = [pos * scale for pos in ar.read_float_vector(3)]
-        self.radius = ar.read_float()
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> SphereCollision:
+        return cls(
+            name = ar.read_fstring(),
+            center = ar.read_float_vector(3) * ar.metadata["scale"] * ((1, -1, 1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1)),
+            radius = ar.read_float() * ar.metadata["scale"]
+        )
 
-class BoxCollision:
-    name = ""
-    center = []
-    rotation = []
-    x = 0
-    y = 0
-    z = 0
+@dataclass(slots=True)
+class BoxCollision(CollisionShape):
+    rotation: tuple[float, float, float, float]
+    x: float
+    y: float
+    z: float
 
-    def __init__(self, ar: FArchiveReader, scale):
-        self.name = ar.read_fstring()
-        self.center = [pos * scale for pos in ar.read_float_vector(3)]
-        self.rotation = ar.read_float_vector(3)
-        self.x = ar.read_float()
-        self.y = ar.read_float()
-        self.z = ar.read_float()
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> BoxCollision:
+        return cls(
+            name = ar.read_fstring(),
+            center = ar.read_float_vector(3) * ar.metadata["scale"] * ((1, -1, 1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1)),
+            rotation = ar.read_float_vector(4) * ((1, -1, 1, -1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1, 1)),
+            x = ar.read_float() * ar.metadata["scale"],
+            y = ar.read_float() * ar.metadata["scale"],
+            z = ar.read_float() * ar.metadata["scale"]
+        )
 
-class CapsuleCollision:
-    name = ""
-    center = []
-    rotation = []
-    radius = 0
-    length = 0
+@dataclass(slots=True)
+class CapsuleCollision(CollisionShape):
+    rotation: tuple[float, float, float, float]
+    radius: float
+    length: float
 
-    def __init__(self, ar: FArchiveReader, scale):
-        self.name = ar.read_fstring()
-        self.center = [pos * scale for pos in ar.read_float_vector(3)]
-        self.rotation = ar.read_float_vector(3)
-        self.radius = ar.read_float()
-        self.length = ar.read_float()
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> CapsuleCollision:
+        return cls(
+            name = ar.read_fstring(),
+            center = (ar.read_float_vector(3) * ar.metadata["scale"]) * ((1, -1, 1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1)),
+            rotation = ar.read_float_vector(4) * ((1, -1, 1, -1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1, 1)),
+            radius = ar.read_float() * ar.metadata["scale"],
+            length = ar.read_float() * ar.metadata["scale"]
+        )
 
-class TaperedCapsuleCollision:
-    name = ""
-    center = []
-    rotation = []
-    radius0 = 0
-    radius1 = 0
-    length = 0
+@dataclass(slots=True)
+class TaperedCapsuleCollision(CollisionShape):
+    rotation: tuple[float, float, float, float]
+    radius0: float
+    radius1: float
+    length: float
 
-    def __init__(self, ar: FArchiveReader, scale):
-        self.name = ar.read_fstring()
-        self.center = [pos * scale for pos in ar.read_float_vector(3)]
-        self.rotation = ar.read_float_vector(3)
-        self.radius0 = ar.read_float()
-        self.radius1 = ar.read_float()
-        self.length = ar.read_float()
-"""
+    @classmethod
+    def from_archive(cls, ar: FArchiveReader) -> TaperedCapsuleCollision:
+        return cls(
+            name = ar.read_fstring(),
+            center = ar.read_float_vector(3)  * ar.metadata["scale"] * ((1, -1, 1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1)),
+            rotation = ar.read_float_vector(4) * ((1, -1, 1, -1) if ar.file_version >= EUEFormatVersion.PreserveOriginalTransforms else (1, 1, 1, 1)),
+            radius0 = ar.read_float() * ar.metadata["scale"],
+            radius1 = ar.read_float() * ar.metadata["scale"],
+            length = ar.read_float() * ar.metadata["scale"]
+        )

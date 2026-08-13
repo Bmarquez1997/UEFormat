@@ -103,6 +103,7 @@ struct FBone
     int ParentIndex;
     FVector Position;
     FQuat Orientation;
+    FVector Scale;
 }
 
 struct FSocket

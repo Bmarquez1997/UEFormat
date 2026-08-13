@@ -1,94 +1,66 @@
-# UEModel Specifications
+# UEModel
 
-Binary layout for `.uemodel` files (`Identifier = "UEMODEL"`).
+Static/Skeletal Models with LODs, Skeletons, and Convex Collision.
 
-Latest format only. Shared header / [attribute sets](generic.md#attribute-sets): [generic.md](generic.md).
+## Root
 
----
+```csharp
+FDataAttributeSet
+{
+    LODS : TArray<UEModelLOD>
+    SKELETON : FDataAttributeSet
+    COLLISION : TArray<FConvexMeshCollision>
+}
+```
 
-## Top-level attribute set
+## LOD
 
-After the header, one `FDataAttributeSet`:
-
-| Name | `Data` layout |
-|------|---------------|
-| `LODS` | `TArray<UEModelLOD>` |
-| `SKELETON` | `FDataAttributeSet` |
-| `COLLISION` | `TArray<FConvexMeshCollision>` |
-
----
-
-## `UEModelLOD`
-
-Each element of `LODS`:
-
-```cpp
+```csharp
 struct UEModelLOD
 {
     FString Name;
     FDataAttributeSet Attributes;
 }
-```
 
-### LOD attribute set
-
-| Name | `Data` layout |
-|------|---------------|
-| `VERTICES` | `TArray<FVector>` |
-| `NORMALS` | `TArray<FNormal>` |
-| `TANGENTS` | `TArray<FVector>` |
-| `TEXCOORDS` | `TArray<FTexCoordEntry>` |
-| `INDICES` | `TArray<u32>` |
-| `VERTEXCOLORS` | `TArray<FVertexColor>` |
-| `MATERIALS` | `TArray<FMaterial>` |
-| `WEIGHTS` | `TArray<FWeight>` |
-| `MORPHTARGETS` | `TArray<FMorphTarget>` |
-
----
-
-## `SKELETON` attribute set
-
-`Data` of the top-level `SKELETON` attribute is itself an `FDataAttributeSet`:
-
-| Name | `Data` layout |
-|------|---------------|
-| `METADATA` | `FSkeletonMetadata` |
-| `BONES` | `TArray<FBone>` |
-| `SOCKETS` | `TArray<FSocket>` |
-| `VIRTUALBONES` | `TArray<FVirtualBone>` |
-
-Logical fields (not a flat wire struct):
-
-```cpp
-struct UEModelSkeleton
+FDataAttributeSet
 {
-    FSkeletonMetadata Metadata;
-    TArray<FBone> Bones;
-    TArray<FSocket> Sockets;
-    TArray<FVirtualBone> VirtualBones;
+    VERTICES : TArray<FVector>
+    NORMALS : TArray<FNormal>
+    TANGENTS : TArray<FVector>
+    TEXCOORDS : TArray<FTexCoordEntry>
+    INDICES : TArray<uint>
+    VERTEXCOLORS : TArray<FVertexColor>
+    MATERIALS : TArray<FMaterial>
+    WEIGHTS : TArray<FWeight>
+    MORPHTARGETS : TArray<FMorphTarget>
 }
 ```
 
----
+## Skeleton
 
-## Structures
+```csharp
+FDataAttributeSet
+{
+    METADATA : FString
+    BONES : TArray<FBone>
+    SOCKETS : TArray<FSocket>
+    VIRTUALBONES : TArray<FVirtualBone>
+}
+```
 
-```cpp
+## Structs
+
+```csharp
+struct FNormal
+{
+    float BinormalSign;
+    FVector Normal;
+}
+
 struct FTexCoordEntry
 {
     FString Name;
     TArray<FMeshUVFloat> UVs;
-}
-
-struct FNormal
-{
-    f32 BinormalSign;
-    FVector Normal;
-}
-
-struct FSkeletonMetadata
-{
-    FString Path;
 }
 
 struct FVertexColor
@@ -101,15 +73,15 @@ struct FMaterial
 {
     FString MaterialName;
     FString MaterialPath;
-    i32 FirstIndex;
-    i32 NumFaces;
+    int FirstIndex;
+    int NumFaces;
 }
 
 struct FWeight
 {
-    u16 Bone;
-    i32 VertexIndex;
-    f32 Weight;
+    ushort Bone;
+    int VertexIndex;
+    float Weight;
 }
 
 struct FMorphTarget
@@ -122,13 +94,13 @@ struct FMorphData
 {
     FVector PositionDelta;
     FVector TangentZDelta;
-    u32 VertexIndex;
+    uint VertexIndex;
 }
 
 struct FBone
 {
     FString BoneName;
-    i32 ParentIndex;
+    int ParentIndex;
     FVector Position;
     FQuat Orientation;
 }
@@ -153,6 +125,6 @@ struct FConvexMeshCollision
 {
     FString Name;
     TArray<FVector> VertexData;
-    TArray<i32> IndexData;
+    TArray<int> IndexData;
 }
 ```

@@ -1,25 +1,20 @@
-# UEPose Specifications
+# UEPose
 
-Binary layout for `.uepose` files (`Identifier = "UEPOSE"`).
+Pose Assets with Named Poses and Curves.
 
-Latest format only. Shared header / [attribute sets](generic.md#attribute-sets): [generic.md](generic.md).
+## Root
 
----
+```csharp
+FDataAttributeSet
+{
+    POSES : TArray<FPoseData>
+    CURVES : TArray<FString>
+}
+```
 
-## Top-level attribute set
+## Structs
 
-After the header, one `FDataAttributeSet`:
-
-| Name | `Data` layout |
-|------|---------------|
-| `POSES` | `TArray<FPoseData>` |
-| `CURVES` | `TArray<FString>` |
-
----
-
-## Structures
-
-```cpp
+```csharp
 struct FPoseData
 {
     FString PoseName;
@@ -37,7 +32,7 @@ struct FPoseKey
 
 struct FPoseCurveInfluence
 {
-    i32 CurveIndex;
-    f32 Influence;
+    int CurveIndex;
+    float Influence;
 }
 ```

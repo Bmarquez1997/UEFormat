@@ -1,34 +1,29 @@
-# UEAnim Specifications
+# UEAnim
 
-Binary layout for `.ueanim` files (`Identifier = "UEANIM"`).
+Skeletal Animation Sequences with Bone Transforms and Curves.
 
-Latest format only. Shared header / [attribute sets](generic.md#attribute-sets): [generic.md](generic.md).
+## Root
 
----
+```csharp
+FDataAttributeSet
+{
+    METADATA : FAnimMetadata
+    TRACKS : TArray<FTrack>
+    CURVES : TArray<FCurve>
+}
+```
 
-## Top-level attribute set
+## Structs
 
-After the header, one `FDataAttributeSet`:
-
-| Name | `Data` layout |
-|------|---------------|
-| `METADATA` | `FAnimMetadata` |
-| `TRACKS` | `TArray<FTrack>` |
-| `CURVES` | `TArray<FCurve>` |
-
----
-
-## Structures
-
-```cpp
+```csharp
 struct FAnimMetadata
 {
-    i32 NumFrames;
-    f32 FramesPerSecond;
+    int NumFrames;
+    float FramesPerSecond;
     FString RefPosePath;
-    u8 AdditiveAnimType;
-    u8 RefPoseType;
-    i32 RefFrameIndex;
+    byte AdditiveAnimType;
+    byte RefPoseType;
+    int RefFrameIndex;
 }
 
 struct FTrack
@@ -47,37 +42,35 @@ struct FCurve
 
 struct FVectorKey
 {
-    i32 Frame;
+    int Frame;
     FVector Value;
 }
 
 struct FQuatKey
 {
-    i32 Frame;
+    int Frame;
     FQuat Value;
 }
 
 struct FFloatKey
 {
-    i32 Frame;
-    f32 Value;
+    int Frame;
+    float Value;
+}
+
+enum EAdditiveAnimationType : byte
+{
+    AAT_None = 0,
+    AAT_LocalSpaceBase = 1,
+    AAT_RotationOffsetMeshSpace = 2,
+}
+
+enum EAdditiveBasePoseType : byte
+{
+    ABPT_None = 0,
+    ABPT_RefPose = 1,
+    ABPT_AnimScaled = 2,
+    ABPT_AnimFrame = 3,
+    ABPT_LocalAnimFrame = 4,
 }
 ```
-
-### `EAdditiveAnimationType`
-
-| Value | Name |
-|------:|------|
-| 0 | `AAT_None` |
-| 1 | `AAT_LocalSpaceBase` |
-| 2 | `AAT_RotationOffsetMeshSpace` |
-
-### `EAdditiveBasePoseType`
-
-| Value | Name |
-|------:|------|
-| 0 | `ABPT_None` |
-| 1 | `ABPT_RefPose` |
-| 2 | `ABPT_AnimScaled` |
-| 3 | `ABPT_AnimFrame` |
-| 4 | `ABPT_LocalAnimFrame` |

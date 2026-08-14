@@ -49,7 +49,7 @@ struct TArray<T>
 struct FUEFormatHeader
 {
     byte[8] Magic; // "UEFORMAT"
-    FString Identifier; // "UEMODEL" | "UEANIM" | "UEPOSE" | "UEPHYS"
+    FString Identifier; // "UEMODEL" | "UEANIM" | "UEPOSE"
     byte FileVersion;
     FString ObjectName;
     FString ObjectPath;

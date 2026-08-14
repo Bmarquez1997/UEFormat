@@ -108,6 +108,43 @@ FQuat4f FUEFormatReader::ReadQuat()
 	return FQuat4f(X, Y, Z, W).GetNormalized();
 }
 
+FColor FUEFormatReader::ReadColor()
+{
+	const uint8 R = ReadByte();
+	const uint8 G = ReadByte();
+	const uint8 B = ReadByte();
+	const uint8 A = ReadByte();
+	return FColor(R, G, B, A);
+}
+
+void FUEFormatReader::ReadColorArray(int32 Count, TArray<FColor>& Out)
+{
+	Out.Reset();
+	if (Count <= 0)
+	{
+		return;
+	}
+
+	const int32 ByteCount = Count * 4;
+	if (!CanRead(ByteCount))
+	{
+		UE_LOG(LogTemp, Error, TEXT("UEFormat: read past end of buffer"));
+		return;
+	}
+
+	Out.SetNumUninitialized(Count);
+	const uint8* Src = Cursor();
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const uint8 R = Src[Index * 4 + 0];
+		const uint8 G = Src[Index * 4 + 1];
+		const uint8 B = Src[Index * 4 + 2];
+		const uint8 A = Src[Index * 4 + 3];
+		Out[Index] = FColor(R, G, B, A);
+	}
+	Offset += ByteCount;
+}
+
 std::string FUEFormatReader::ReadFString()
 {
 	return ReadFixedString(ReadInt());

@@ -50,7 +50,7 @@ namespace UEFormat::Deserialize
 				{
 					OutLOD.VertexColors[Index].Name = Payload.ReadFString();
 					OutLOD.VertexColors[Index].Count = Payload.ReadInt();
-					Payload.ReadArray(OutLOD.VertexColors[Index].Count, OutLOD.VertexColors[Index].Data);
+					Payload.ReadColorArray(OutLOD.VertexColors[Index].Count, OutLOD.VertexColors[Index].Data);
 				}
 			}
 			else if (Name == "MATERIALS")

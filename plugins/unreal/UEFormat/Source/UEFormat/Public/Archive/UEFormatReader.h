@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Data/UEFormatHeader.h"
+#include "Math/Color.h"
 #include "Math/Quat.h"
 #include "Version/EUEFormatVersion.h"
 #include <string>
@@ -33,6 +34,8 @@ public:
 	float ReadFloat();
 	FVector3f ReadVector();
 	FQuat4f ReadQuat();
+	FColor ReadColor();
+	void ReadColorArray(int32 Count, TArray<FColor>& Out);
 	std::string ReadFString();
 	std::string ReadFixedString(int32 Size);
 	TArray<uint8> ReadBytes(int32 Count);

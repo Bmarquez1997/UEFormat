@@ -26,5 +26,3 @@ An intermediate 3D exchange format for Unreal Engine asset extraction.
 - [UEModel](docs/uemodel.md)
 - [UEAnim](docs/ueanim.md)
 - [UEPose](docs/uepose.md)
-- [UEScene](docs/uescene.md) (TBD)
-- [UEPhys](docs/uephys.md) (TBD)

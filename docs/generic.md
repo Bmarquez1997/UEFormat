@@ -6,8 +6,6 @@ Shared binary layout for all UEFormat files.
 - Models: [.uemodel](uemodel.md)
 - Animations: [.ueanim](ueanim.md)
 - Pose Assets: [.uepose](uepose.md)
-- Scenes: [.uescene](uescene.md)
-- Physics Assets: [.uephys](uephys.md)
 
 ## Generic Structs
 
@@ -51,7 +49,7 @@ struct TArray<T>
 struct FUEFormatHeader
 {
     byte[8] Magic; // "UEFORMAT"
-    FString Identifier; // "UEMODEL" | "UEANIM" | "UEPOSE" | "UESCENE" | "UEPHYS"
+    FString Identifier; // "UEMODEL" | "UEANIM" | "UEPOSE" | "UEPHYS"
     byte FileVersion;
     FString ObjectName;
     FString ObjectPath;
